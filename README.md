@@ -71,6 +71,10 @@ The script will:
 - 📁 Create logs directory
 - 🚀 Start the WebSocket server on port 8080
 
+#### Starting the Web Client
+
+Open your browser and navigate to: http://localhost:8080/static/index.html for the GUI
+
 #### Starting the Java Client
 ```bash
 # Make script executable (first time only)
@@ -396,29 +400,6 @@ curl http://localhost:8080/health
 
 # Check WebSocket endpoint
 curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" http://localhost:8080/websocket
-```
-
-### 🎯 Production Deployment Checklist
-
-#### Before Going Live:
-- [ ] Test with `./run-server.sh` and `./run-client.sh`
-- [ ] Verify browser client works at `http://localhost:8080/static/index.html`
-- [ ] Test multi-client scenarios
-- [ ] Check health endpoint: `curl http://localhost:8080/health`
-- [ ] Monitor logs: `tail -f logs/websocket.log`
-- [ ] Test connection resilience (stop/start server)
-- [ ] Verify all message types work (ping, broadcast, private, echo)
-
-#### Deployment Commands:
-```bash
-# Production build
-mvn clean package
-
-# Start with custom configuration
-java -Dserver.port=8080 -jar target/vertx-websocket-1.0.0.jar
-
-# Or use the bash script for development
-./run-server.sh
 ```
 
 ## 🧪 Testing Scenarios
