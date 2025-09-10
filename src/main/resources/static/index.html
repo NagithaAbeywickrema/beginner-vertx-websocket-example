@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 20px;
+            background-color: #fafafa;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .message-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .message-input input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .message-input button {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .message-input button:hover {
+            background-color: #0056b3;
+        }
+        .message-input button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .controls button {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+            cursor: pointer;
+        }
+        .controls button:hover {
+            background-color: #e9ecef;
+        }
+        .info {
+            background-color: #e3f2fd;
+            border: 1px solid #bbdefb;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 WebSocket Client</h1>
+        
+        <div id="status" class="status disconnected">
+            Disconnected
+        </div>
+        
+        <div class="info">
+            <strong>Connection ID:</strong> <span id="connectionId">N/A</span><br>
+            <strong>Server:</strong> <span id="serverInfo">ws://localhost:8080/websocket</span>
+        </div>
+        
+        <div class="controls">
+            <button onclick="connect()">Connect</button>
+            <button onclick="disconnect()">Disconnect</button>
+            <button onclick="sendPing()">Ping</button>
+            <button onclick="clearMessages()">Clear</button>
+        </div>
+        
+        <div id="messages" class="messages"></div>
+        
+        <div class="message-input">
+            <input type="text" id="messageInput" placeholder="Enter message..." onkeypress="handleKeyPress(event)">
+            <button onclick="sendBroadcast()" id="sendButton" disabled>Send Broadcast</button>
+        </div>
+        
+        <div class="message-input">
+            <input type="text" id="targetId" placeholder="Target Connection ID...">
+            <input type="text" id="privateMessage" placeholder="Private message...">
+            <button onclick="sendPrivateMessage()" id="privateButton" disabled>Send Private</button>
+        </div>
+        
+        <div class="message-input">
+            <input type="text" id="echoMessage" placeholder="Echo message...">
+            <button onclick="sendEcho()" id="echoButton" disabled>Send Echo</button>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let connectionId = null;
+        
+        function updateStatus(connected, message) {
+            const statusEl = document.getElementById('status');
+            if (connected) {
+                statusEl.className = 'status connected';
+                statusEl.textContent = message || 'Connected';
+            } else {
+                statusEl.className = 'status disconnected';
+                statusEl.textContent = message || 'Disconnected';
+            }
+            
+            // Update button states
+            const buttons = ['sendButton', 'privateButton', 'echoButton'];
+            buttons.forEach(id => {
+                document.getElementById(id).disabled = !connected;
+            });
+        }
+        
+        function addMessage(message, type = 'info') {
+            const messagesEl = document.getElementById('messages');
+            const timestamp = new Date().toLocaleTimeString();
+            const messageEl = document.createElement('div');
+            messageEl.innerHTML = `<span style="color: #666;">[${timestamp}]</span> ${message}`;
+            messagesEl.appendChild(messageEl);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+        
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                addMessage('Already connected!', 'warning');
+                return;
+            }
+            
+            const url = 'ws://localhost:8080/websocket';
+            addMessage(`Connecting to ${url}...`);
+            
+            ws = new WebSocket(url);
+            
+            ws.onopen = function(event) {
+                addMessage('✅ Connected to server!', 'success');
+                updateStatus(true, 'Connected');
+            };
+            
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMessage(data);
+                } catch (e) {
+                    addMessage('📨 Raw message: ' + event.data);
+                }
+            };
+            
+            ws.onclose = function(event) {
+                addMessage('❌ Connection closed', 'warning');
+                updateStatus(false, 'Disconnected');
+                connectionId = null;
+                document.getElementById('connectionId').textContent = 'N/A';
+            };
+            
+            ws.onerror = function(error) {
+            console.log('❗ Connection error: ' + error);
+                addMessage('❗ Connection error: ' + error, 'error');
+                updateStatus(false, 'Error');
+            };
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+        
+        function handleMessage(data) {
+            const type = data.type || 'unknown';
+            
+            switch (type) {
+                case 'welcome':
+                    connectionId = data.connectionId;
+                    document.getElementById('connectionId').textContent = connectionId;
+                    addMessage(`🎉 ${data.message} (ID: ${connectionId})`, 'success');
+                    break;
+                    
+                case 'pong':
+                    addMessage('🏓 Pong received');
+                    break;
+                    
+                case 'broadcast':
+                    addMessage(`📢 Broadcast from ${data.from}: ${data.message}`, 'broadcast');
+                    break;
+                    
+                case 'private':
+                    addMessage(`💬 Private from ${data.from}: ${data.message}`, 'private');
+                    break;
+                    
+                case 'private_sent':
+                    addMessage(`✅ Private message sent to ${data.targetId}: ${data.message}`, 'success');
+                    break;
+                    
+                case 'echo':
+                    addMessage(`🔄 Echo: ${data.originalMessage}`, 'echo');
+                    break;
+                    
+                case 'user_joined':
+                    if (data.connectionId !== connectionId) {
+                        addMessage(`👋 User ${data.connectionId} joined (Total: ${data.totalConnections})`, 'info');
+                    }
+                    break;
+                    
+                case 'user_left':
+                    addMessage(`👋 User ${data.connectionId} left (Total: ${data.totalConnections})`, 'info');
+                    break;
+                    
+                case 'error':
+                    addMessage(`❗ Error: ${data.message}`, 'error');
+                    break;
+                    
+                default:
+                    addMessage(`📨 ${type}: ${JSON.stringify(data)}`);
+                    break;
+            }
+        }
+        
+        function sendMessage(messageObj) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addMessage('❌ Not connected to server', 'error');
+                return false;
+            }
+            
+            messageObj.timestamp = new Date().toISOString();
+            ws.send(JSON.stringify(messageObj));
+            return true;
+        }
+        
+        function sendPing() {
+            if (sendMessage({ type: 'ping' })) {
+                addMessage('🏓 Ping sent');
+            }
+        }
+        
+        function sendBroadcast() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) {
+                addMessage('❌ Please enter a message', 'error');
+                return;
+            }
+            
+            if (sendMessage({ type: 'broadcast', message: message })) {
+                addMessage(`📢 Broadcasting: ${message}`);
+                input.value = '';
+            }
+        }
+        
+        function sendPrivateMessage() {
+            const targetInput = document.getElementById('targetId');
+            const messageInput = document.getElementById('privateMessage');
+            const targetId = targetInput.value.trim();
+            const message = messageInput.value.trim();
+            
+            if (!targetId || !message) {
+                addMessage('❌ Please enter both target ID and message', 'error');
+                return;
+            }
+            
+            if (sendMessage({ type: 'private', targetId: targetId, message: message })) {
+                addMessage(`💬 Sending private message to ${targetId}: ${message}`);
+                messageInput.value = '';
+            }
+        }
+        
+        function sendEcho() {
+            const input = document.getElementById('echoMessage');
+            const message = input.value.trim();
+            
+            if (!message) {
+                addMessage('❌ Please enter a message to echo', 'error');
+                return;
+            }
+            
+            if (sendMessage({ type: 'echo', message: message })) {
+                addMessage(`🔄 Sending echo: ${message}`);
+                input.value = '';
+            }
+        }
+        
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = '';
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendBroadcast();
+            }
+        }
+        
+        // Auto-connect on page load
+        window.onload = function() {
+            updateStatus(false);
+            addMessage('👋 Welcome! Click "Connect" to start.');
+        };
+    </script>
+</body>
+</html>
